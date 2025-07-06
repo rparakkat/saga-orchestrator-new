@@ -1,6 +1,12 @@
 package com.saga.application.service;
 
+import com.saga.domain.event.SagaEvent;
+import com.saga.domain.event.SagaStartedEvent;
+import com.saga.domain.event.SagaCompletedEvent;
+import com.saga.domain.event.SagaFailedEvent;
+import com.saga.domain.event.SagaCompensatedEvent;
 import com.saga.domain.model.Saga;
+import com.saga.infrastructure.websocket.SagaWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -15,14 +21,19 @@ import org.springframework.stereotype.Service;
 public class SagaEventPublisher {
 
     private final ApplicationEventPublisher eventPublisher;
+    private final SagaWebSocketHandler webSocketHandler;
 
     /**
      * Publish saga started event
      */
     public void publishSagaStarted(Saga saga) {
         log.info("Publishing saga started event for: {}", saga.getSagaId());
-        // TODO: Implement actual event publishing
-        // eventPublisher.publishEvent(new SagaStartedEvent(saga));
+        
+        SagaEvent event = new SagaStartedEvent(saga);
+        eventPublisher.publishEvent(event);
+        
+        // Broadcast to WebSocket clients
+        webSocketHandler.broadcastSagaEvent(event);
     }
 
     /**
@@ -30,8 +41,12 @@ public class SagaEventPublisher {
      */
     public void publishSagaCompleted(Saga saga) {
         log.info("Publishing saga completed event for: {}", saga.getSagaId());
-        // TODO: Implement actual event publishing
-        // eventPublisher.publishEvent(new SagaCompletedEvent(saga));
+        
+        SagaEvent event = new SagaCompletedEvent(saga);
+        eventPublisher.publishEvent(event);
+        
+        // Broadcast to WebSocket clients
+        webSocketHandler.broadcastSagaEvent(event);
     }
 
     /**
@@ -39,8 +54,12 @@ public class SagaEventPublisher {
      */
     public void publishSagaFailed(Saga saga) {
         log.info("Publishing saga failed event for: {}", saga.getSagaId());
-        // TODO: Implement actual event publishing
-        // eventPublisher.publishEvent(new SagaFailedEvent(saga));
+        
+        SagaEvent event = new SagaFailedEvent(saga);
+        eventPublisher.publishEvent(event);
+        
+        // Broadcast to WebSocket clients
+        webSocketHandler.broadcastSagaEvent(event);
     }
 
     /**
@@ -48,7 +67,11 @@ public class SagaEventPublisher {
      */
     public void publishSagaCompensated(Saga saga) {
         log.info("Publishing saga compensated event for: {}", saga.getSagaId());
-        // TODO: Implement actual event publishing
-        // eventPublisher.publishEvent(new SagaCompensatedEvent(saga));
+        
+        SagaEvent event = new SagaCompensatedEvent(saga);
+        eventPublisher.publishEvent(event);
+        
+        // Broadcast to WebSocket clients
+        webSocketHandler.broadcastSagaEvent(event);
     }
 } 
