@@ -21,6 +21,11 @@ spring:
     user:
       name: ${ADMIN_USERNAME:admin}
       password: ${ADMIN_PASSWORD:admin123}
+  
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=300s
 
 management:
   endpoints:
@@ -82,9 +87,36 @@ saga:
     max-retries: 3
     retry-delay-ms: 1000
     timeout-ms: 30000
+    thread-pool:
+      core-size: 20
+      max-size: 100
+      queue-capacity: 500
+      keep-alive-seconds: 60
+  
+  mongodb:
+    connection-pool:
+      max-size: 100
+      min-size: 5
+      max-wait-time: 30000
+      max-connection-life-time: 300000
+      max-connection-idle-time: 60000
+  
+  rate-limit:
+    requests-per-minute: 100
+    requests-per-hour: 1000
+    burst-size: 50
+  
+  circuit-breaker:
+    failure-threshold: 5
+    timeout-seconds: 30
+    success-threshold: 3
+  
   compensation:
     enabled: true
     timeout-ms: 15000
+  
   monitoring:
     enabled: true
-    metrics-enabled: true 
+    metrics-enabled: true
+    health-check-enabled: true
+    performance-tracking-enabled: true 

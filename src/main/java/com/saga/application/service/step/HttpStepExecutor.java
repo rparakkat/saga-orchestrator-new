@@ -4,15 +4,20 @@ import com.saga.domain.model.SagaStep;
 import com.saga.domain.model.StepType;
 import com.saga.application.service.StepExecutionResult;
 import com.saga.domain.exception.StepExecutionException;
+import com.saga.infrastructure.service.CircuitBreakerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
 
 /**
- * HTTP step executor implementing the Strategy pattern.
+ * HTTP step executor implementing the Strategy pattern with circuit breaker protection.
  */
 @Slf4j
 @Component
@@ -20,6 +25,7 @@ import java.util.Map;
 public class HttpStepExecutor implements StepExecutor {
 
     private final RestTemplate restTemplate;
+    private final CircuitBreakerService circuitBreakerService;
 
     @Override
     public StepExecutionResult execute(SagaStep step, Map<String, Object> sagaInputData) {
@@ -30,20 +36,33 @@ public class HttpStepExecutor implements StepExecutor {
         log.info("Executing HTTP {} call to: {} for step: {}", method, url, step.getName());
 
         try {
-            // TODO: Implement proper HTTP call with request body template processing
-            // For now, return a mock successful response
-            Map<String, Object> responseData = Map.of(
-                "status", "success",
-                "url", url,
-                "method", method,
-                "timestamp", System.currentTimeMillis()
+            // Extract service name from URL for circuit breaker
+            String serviceName = extractServiceName(url);
+            
+            return circuitBreakerService.execute(serviceName, () -> {
+                // TODO: Implement proper HTTP call with request body template processing
+                // For now, return a mock successful response
+                Map<String, Object> responseData = Map.of(
+                    "status", "success",
+                    "url", url,
+                    "method", method,
+                    "timestamp", System.currentTimeMillis()
+                );
+
+                return StepExecutionResult.builder()
+                        .success(true)
+                        .outputData(responseData)
+                        .build();
+            });
+            
+        } catch (CircuitBreakerService.CircuitBreakerOpenException e) {
+            log.warn("Circuit breaker is open for HTTP step: {}", step.getName());
+            throw new StepExecutionException(
+                "Service temporarily unavailable: " + e.getMessage(), 
+                step.getStepId(), 
+                step.getStepId(), 
+                e
             );
-
-            return StepExecutionResult.builder()
-                    .success(true)
-                    .outputData(responseData)
-                    .build();
-
         } catch (Exception e) {
             log.error("HTTP call failed for step: {}", step.getName(), e);
             throw new StepExecutionException(
@@ -58,5 +77,17 @@ public class HttpStepExecutor implements StepExecutor {
     @Override
     public StepType getSupportedStepType() {
         return StepType.HTTP_CALL;
+    }
+
+    /**
+     * Extract service name from URL for circuit breaker
+     */
+    private String extractServiceName(String url) {
+        try {
+            java.net.URL parsedUrl = new java.net.URL(url);
+            return parsedUrl.getHost();
+        } catch (Exception e) {
+            return "unknown-service";
+        }
     }
 } 
