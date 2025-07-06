@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saga Orchestrator Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .header .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-healthy { background-color: #27ae60; }
+        .status-warning { background-color: #f39c12; }
+        .status-error { background-color: #e74c3c; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .metric-card h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #3498db;
+            margin-bottom: 10px;
+        }
+
+        .metric-label {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chart-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-card h3 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+
+        .recent-events {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .recent-events h3 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+
+        .event-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .event-item {
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            background: rgba(52, 152, 219, 0.1);
+            margin-bottom: 10px;
+            border-radius: 0 8px 8px 0;
+            transition: all 0.3s ease;
+        }
+
+        .event-item:hover {
+            background: rgba(52, 152, 219, 0.2);
+            transform: translateX(5px);
+        }
+
+        .event-item.success {
+            border-left-color: #27ae60;
+            background: rgba(39, 174, 96, 0.1);
+        }
+
+        .event-item.error {
+            border-left-color: #e74c3c;
+            background: rgba(231, 76, 60, 0.1);
+        }
+
+        .event-item.warning {
+            border-left-color: #f39c12;
+            background: rgba(243, 156, 18, 0.1);
+        }
+
+        .event-time {
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+
+        .event-message {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .error {
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Saga Orchestrator Dashboard</h1>
+            <div class="status">
+                <div id="statusIndicator" class="status-indicator status-healthy"></div>
+                <span id="statusText">System Healthy</span>
+                <span id="lastUpdate"></span>
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <h3>Total Sagas</h3>
+                <div id="totalSagas" class="metric-value">0</div>
+                <div class="metric-label">Executed</div>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Success Rate</h3>
+                <div id="successRate" class="metric-value">0%</div>
+                <div class="metric-label">Saga Completion</div>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Active Sagas</h3>
+                <div id="activeSagas" class="metric-value">0</div>
+                <div class="metric-label">Currently Running</div>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Failed Sagas</h3>
+                <div id="failedSagas" class="metric-value">0</div>
+                <div class="metric-label">Require Attention</div>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Total Steps</h3>
+                <div id="totalSteps" class="metric-value">0</div>
+                <div class="metric-label">Executed</div>
+            </div>
+            
+            <div class="metric-card">
+                <h3>Step Success Rate</h3>
+                <div id="stepSuccessRate" class="metric-value">0%</div>
+                <div class="metric-label">Step Completion</div>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-card">
+                <h3>Saga Status Distribution</h3>
+                <canvas id="sagaStatusChart" width="400" height="200"></canvas>
+            </div>
+            
+            <div class="chart-card">
+                <h3>Performance Metrics</h3>
+                <canvas id="performanceChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+
+        <div class="recent-events">
+            <h3>📊 Recent Events</h3>
+            <div id="eventList" class="event-list">
+                <div class="loading">Loading events...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dashboard state
+        let dashboardState = {
+            metrics: null,
+            events: [],
+            charts: {},
+            socket: null
+        };
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeWebSocket();
+            initializeCharts();
+            loadInitialData();
+            startPeriodicUpdates();
+        });
+
+        // WebSocket connection
+        function initializeWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/saga-dashboard`;
+            
+            try {
+                dashboardState.socket = new WebSocket(wsUrl);
+                
+                dashboardState.socket.onopen = function() {
+                    console.log('WebSocket connected');
+                    updateStatus('Connected', 'status-healthy');
+                };
+                
+                dashboardState.socket.onmessage = function(event) {
+                    const message = JSON.parse(event.data);
+                    handleWebSocketMessage(message);
+                };
+                
+                dashboardState.socket.onclose = function() {
+                    console.log('WebSocket disconnected');
+                    updateStatus('Disconnected', 'status-error');
+                    // Attempt to reconnect after 5 seconds
+                    setTimeout(initializeWebSocket, 5000);
+                };
+                
+                dashboardState.socket.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    updateStatus('Error', 'status-error');
+                };
+                
+            } catch (error) {
+                console.error('Failed to connect to WebSocket:', error);
+                updateStatus('Connection Failed', 'status-error');
+            }
+        }
+
+        // Handle WebSocket messages
+        function handleWebSocketMessage(message) {
+            switch (message.type) {
+                case 'INITIAL_METRICS':
+                case 'METRICS_UPDATE':
+                    updateMetrics(message.data);
+                    break;
+                case 'SAGA_EVENT':
+                    addEvent(message.data);
+                    break;
+                default:
+                    console.log('Unknown message type:', message.type);
+            }
+        }
+
+        // Update dashboard metrics
+        function updateMetrics(metrics) {
+            dashboardState.metrics = metrics;
+            
+            // Update metric cards
+            document.getElementById('totalSagas').textContent = metrics.totalSagasExecuted || 0;
+            document.getElementById('successRate').textContent = 
+                (metrics.sagaSuccessRate || 0).toFixed(1) + '%';
+            document.getElementById('activeSagas').textContent = metrics.activeSagas || 0;
+            document.getElementById('failedSagas').textContent = metrics.failedSagas || 0;
+            document.getElementById('totalSteps').textContent = metrics.totalStepsExecuted || 0;
+            document.getElementById('stepSuccessRate').textContent = 
+                (metrics.stepSuccessRate || 0).toFixed(1) + '%';
+            
+            // Update charts
+            updateCharts(metrics);
+            
+            // Update last update time
+            document.getElementById('lastUpdate').textContent = 
+                'Last updated: ' + new Date().toLocaleTimeString();
+        }
+
+        // Add new event to the list
+        function addEvent(event) {
+            const eventList = document.getElementById('eventList');
+            
+            // Remove loading message if present
+            const loading = eventList.querySelector('.loading');
+            if (loading) {
+                loading.remove();
+            }
+            
+            // Create event item
+            const eventItem = document.createElement('div');
+            eventItem.className = 'event-item';
+            
+            // Determine event type and styling
+            if (event.eventType && event.eventType.includes('COMPLETED')) {
+                eventItem.classList.add('success');
+            } else if (event.eventType && event.eventType.includes('FAILED')) {
+                eventItem.classList.add('error');
+            } else if (event.eventType && event.eventType.includes('COMPENSATED')) {
+                eventItem.classList.add('warning');
+            }
+            
+            // Event content
+            eventItem.innerHTML = `
+                <div class="event-time">${new Date().toLocaleTimeString()}</div>
+                <div class="event-message">${event.eventType || 'Saga Event'}: ${event.sagaId || 'Unknown'}</div>
+            `;
+            
+            // Add to top of list
+            eventList.insertBefore(eventItem, eventList.firstChild);
+            
+            // Keep only last 50 events
+            const events = eventList.querySelectorAll('.event-item');
+            if (events.length > 50) {
+                events[events.length - 1].remove();
+            }
+        }
+
+        // Initialize charts
+        function initializeCharts() {
+            // Saga Status Chart
+            const sagaStatusCtx = document.getElementById('sagaStatusChart').getContext('2d');
+            dashboardState.charts.sagaStatus = new Chart(sagaStatusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Completed', 'Running', 'Failed', 'Compensated', 'Timeout'],
+                    datasets: [{
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: [
+                            '#27ae60',
+                            '#3498db',
+                            '#e74c3c',
+                            '#f39c12',
+                            '#95a5a6'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+            
+            // Performance Chart
+            const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+            dashboardState.charts.performance = new Chart(performanceCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Success Rate (%)',
+                        data: [],
+                        borderColor: '#27ae60',
+                        backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update charts with new data
+        function updateCharts(metrics) {
+            // Update saga status chart
+            if (dashboardState.charts.sagaStatus) {
+                dashboardState.charts.sagaStatus.data.datasets[0].data = [
+                    metrics.successfulSagas || 0,
+                    metrics.activeSagas || 0,
+                    metrics.failedSagas || 0,
+                    metrics.compensatedSagas || 0,
+                    metrics.timedOutSagas || 0
+                ];
+                dashboardState.charts.sagaStatus.update();
+            }
+            
+            // Update performance chart
+            if (dashboardState.charts.performance) {
+                const now = new Date().toLocaleTimeString();
+                const successRate = metrics.sagaSuccessRate || 0;
+                
+                dashboardState.charts.performance.data.labels.push(now);
+                dashboardState.charts.performance.data.datasets[0].data.push(successRate);
+                
+                // Keep only last 20 data points
+                if (dashboardState.charts.performance.data.labels.length > 20) {
+                    dashboardState.charts.performance.data.labels.shift();
+                    dashboardState.charts.performance.data.datasets[0].data.shift();
+                }
+                
+                dashboardState.charts.performance.update();
+            }
+        }
+
+        // Load initial data via REST API
+        async function loadInitialData() {
+            try {
+                const response = await fetch('/api/v1/dashboard/overview');
+                if (response.ok) {
+                    const data = await response.json();
+                    updateMetrics(data);
+                } else {
+                    showError('Failed to load initial data');
+                }
+            } catch (error) {
+                console.error('Error loading initial data:', error);
+                showError('Failed to load initial data');
+            }
+        }
+
+        // Start periodic updates
+        function startPeriodicUpdates() {
+            setInterval(async () => {
+                try {
+                    const response = await fetch('/api/v1/dashboard/overview');
+                    if (response.ok) {
+                        const data = await response.json();
+                        updateMetrics(data);
+                    }
+                } catch (error) {
+                    console.error('Error updating metrics:', error);
+                }
+            }, 30000); // Update every 30 seconds
+        }
+
+        // Update status indicator
+        function updateStatus(text, className) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            
+            indicator.className = `status-indicator ${className}`;
+            statusText.textContent = text;
+        }
+
+        // Show error message
+        function showError(message) {
+            const container = document.querySelector('.container');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            container.insertBefore(errorDiv, container.firstChild);
+            
+            // Remove error after 5 seconds
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                console.log('Page hidden, pausing updates');
+            } else {
+                console.log('Page visible, resuming updates');
+                loadInitialData();
+            }
+        });
+    </script>
+</body>
+</html> 
