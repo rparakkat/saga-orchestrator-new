@@ -1,0 +1,10 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/saga_orchestrator_test
+      database: saga_orchestrator_test
+
+logging:
+  level:
+    com.saga: DEBUG
+    org.springframework: INFO 
