@@ -53,9 +53,9 @@ public class AsyncConfig {
     @Bean(name = "stepTaskExecutor")
     public Executor stepTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(50);
-        executor.setMaxPoolSize(200);
-        executor.setQueueCapacity(1000);
+        executor.setCorePoolSize(100);           // Increased for higher throughput
+        executor.setMaxPoolSize(400);            // Increased max threads
+        executor.setQueueCapacity(2000);         // Increased queue capacity
         executor.setKeepAliveSeconds(60);
         executor.setThreadNamePrefix("step-exec-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());

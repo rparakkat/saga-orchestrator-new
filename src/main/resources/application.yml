@@ -25,7 +25,7 @@ spring:
   cache:
     type: caffeine
     caffeine:
-      spec: maximumSize=1000,expireAfterWrite=300s
+      spec: maximumSize=5000,expireAfterWrite=300s  # Increased cache size for higher throughput
 
 management:
   endpoints:
@@ -88,23 +88,23 @@ saga:
     retry-delay-ms: 1000
     timeout-ms: 30000
     thread-pool:
-      core-size: 20
-      max-size: 100
-      queue-capacity: 500
+      core-size: 50             # Increased for higher throughput
+      max-size: 200             # Increased max threads
+      queue-capacity: 2000      # Increased queue capacity
       keep-alive-seconds: 60
   
   mongodb:
     connection-pool:
-      max-size: 100
-      min-size: 5
+      max-size: 200             # Increased for higher concurrency
+      min-size: 20              # Increased minimum connections
       max-wait-time: 30000
       max-connection-life-time: 300000
       max-connection-idle-time: 60000
   
   rate-limit:
-    requests-per-minute: 100
-    requests-per-hour: 1000
-    burst-size: 50
+    requests-per-minute: 1200   # Increased to handle 1000 + buffer
+    requests-per-hour: 60000    # Increased hourly limit
+    burst-size: 200             # Increased burst capacity
   
   circuit-breaker:
     failure-threshold: 5
