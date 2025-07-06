@@ -1,7 +1,12 @@
 package com.saga.application.service;
 
 import com.saga.domain.model.*;
+import com.saga.domain.exception.SagaExecutionException;
 import com.saga.infrastructure.repository.SagaRepository;
+import com.saga.application.service.execution.SagaExecutionTemplate;
+import com.saga.application.service.command.SagaCommand;
+import com.saga.application.service.command.ExecuteSagaCommand;
+import com.saga.application.service.builder.SagaBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -24,7 +29,7 @@ import java.util.concurrent.CompletableFuture;
 public class SagaOrchestratorService {
 
     private final SagaRepository sagaRepository;
-    private final StepExecutorService stepExecutorService;
+    private final SagaExecutionTemplate executionTemplate;
     private final CompensationService compensationService;
     private final SagaEventPublisher eventPublisher;
 
@@ -45,7 +50,7 @@ public class SagaOrchestratorService {
                 .outputData(Map.of())
                 .retryCount(0)
                 .maxRetries(3)
-                .timeoutMs(30000)
+                .timeoutMs(30000L)
                 .priority(0)
                 .build();
 
@@ -77,112 +82,27 @@ public class SagaOrchestratorService {
     @Transactional
     public Saga executeSaga(String sagaId) {
         Saga saga = sagaRepository.findBySagaId(sagaId)
-                .orElseThrow(() -> new IllegalArgumentException("Saga not found: " + sagaId));
+                .orElseThrow(() -> new SagaExecutionException("Saga not found: " + sagaId, sagaId));
 
         if (saga.isCompleted()) {
             log.warn("Saga {} is already completed with status: {}", sagaId, saga.getStatus());
             return saga;
         }
 
-        log.info("Starting execution of saga: {}", sagaId);
-        saga.setStatus(SagaStatus.RUNNING);
-        saga.setStartedAt(LocalDateTime.now());
-        saga = sagaRepository.save(saga);
-
-        eventPublisher.publishSagaStarted(saga);
-
         try {
-            while (!saga.isCompleted() && saga.hasMoreSteps()) {
-                SagaStep currentStep = saga.getCurrentStep();
-                if (currentStep == null) {
-                    break;
-                }
-
-                log.info("Executing step {} of saga {}", currentStep.getName(), sagaId);
-                
-                // Execute the step
-                StepExecutionResult result = stepExecutorService.executeStep(currentStep, saga.getInputData());
-                
-                if (result.isSuccess()) {
-                    // Step succeeded
-                    currentStep.setStatus(StepStatus.COMPLETED);
-                    currentStep.setOutputData(result.getOutputData());
-                    currentStep.setCompletedAt(LocalDateTime.now());
-                    currentStep.calculateDuration();
-                    
-                    // Update saga output data
-                    saga.getOutputData().putAll(result.getOutputData());
-                    
-                    log.info("Step {} completed successfully for saga {}", currentStep.getName(), sagaId);
-                    
-                    // Move to next step
-                    saga.moveToNextStep();
-                    
-                } else {
-                    // Step failed
-                    currentStep.setStatus(StepStatus.FAILED);
-                    currentStep.setErrorMessage(result.getErrorMessage());
-                    currentStep.setErrorStackTrace(result.getErrorStackTrace());
-                    currentStep.setCompletedAt(LocalDateTime.now());
-                    currentStep.calculateDuration();
-                    
-                    log.error("Step {} failed for saga {}: {}", currentStep.getName(), sagaId, result.getErrorMessage());
-                    
-                    // Handle step failure
-                    handleStepFailure(saga, currentStep);
-                    break;
-                }
-                
-                saga = sagaRepository.save(saga);
-            }
-
-            // Check if saga completed successfully
-            if (!saga.isCompleted() && !saga.hasMoreSteps()) {
-                saga.setStatus(SagaStatus.COMPLETED);
-                saga.setCompletedAt(LocalDateTime.now());
-                log.info("Saga {} completed successfully", sagaId);
-                eventPublisher.publishSagaCompleted(saga);
-            }
-
+            // Use Command pattern for execution
+            SagaCommand command = new ExecuteSagaCommand(executionTemplate, saga);
+            saga = command.execute();
+            
+            return sagaRepository.save(saga);
+            
         } catch (Exception e) {
             log.error("Error executing saga: {}", sagaId, e);
-            saga.setStatus(SagaStatus.FAILED);
-            saga.setErrorMessage(e.getMessage());
-            saga.setErrorStackTrace(getStackTrace(e));
-            saga.setCompletedAt(LocalDateTime.now());
-            eventPublisher.publishSagaFailed(saga);
-        }
-
-        return sagaRepository.save(saga);
-    }
-
-    /**
-     * Handle step failure
-     */
-    private void handleStepFailure(Saga saga, SagaStep failedStep) {
-        if (failedStep.canRetry()) {
-            // Retry the step
-            saga.setStatus(SagaStatus.RETRYING);
-            saga.incrementRetryCount();
-            failedStep.incrementRetryCount();
-            log.info("Retrying step {} for saga {}, attempt {}", 
-                    failedStep.getName(), saga.getSagaId(), failedStep.getRetryCount());
-            
-        } else if (failedStep.isRequired()) {
-            // Required step failed and cannot be retried - start compensation
-            saga.setStatus(SagaStatus.COMPENSATING);
-            log.info("Starting compensation for saga {} due to failed required step {}", 
-                    saga.getSagaId(), failedStep.getName());
-            
-            compensationService.compensateSaga(saga);
-            
-        } else {
-            // Non-required step failed - continue with next step
-            log.warn("Non-required step {} failed for saga {}, continuing with next step", 
-                    failedStep.getName(), saga.getSagaId());
-            saga.moveToNextStep();
+            throw new SagaExecutionException("Failed to execute saga: " + e.getMessage(), sagaId, e);
         }
     }
+
+
 
     /**
      * Retry a failed saga

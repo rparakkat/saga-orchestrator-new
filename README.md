@@ -32,6 +32,8 @@ A production-ready task orchestration system using the Saga pattern for distribu
 - **Logging**: Structured logging with configurable levels
 - **Configuration**: Environment-based configuration
 - **Testing**: Comprehensive test coverage with TestContainers
+- **Exception Handling**: Custom exception hierarchy with global error handling
+- **Design Patterns**: Multiple design patterns for maintainability and scalability
 
 ## Architecture
 
@@ -45,17 +47,54 @@ Saga
 └── Metadata
 ```
 
+### Design Patterns Implemented
+
+#### 1. **Strategy Pattern** - Step Execution
+- `StepExecutor` interface with different implementations
+- `HttpStepExecutor`, `DatabaseStepExecutor`, `BusinessLogicStepExecutor`
+- Easy to add new step types without modifying existing code
+
+#### 2. **Factory Pattern** - Step Executor Creation
+- `StepExecutorFactory` for creating appropriate executors
+- Automatic discovery of step executors via Spring dependency injection
+- Type-safe executor selection
+
+#### 3. **Template Method Pattern** - Saga Execution
+- `SagaExecutionTemplate` defines the execution algorithm
+- Hooks for customization at different execution points
+- Consistent execution flow with extensibility
+
+#### 4. **Observer Pattern** - Event Handling
+- `SagaEvent` base class with specific event types
+- `SagaEventPublisher` for publishing events
+- Decoupled event handling for monitoring and integration
+
+#### 5. **Chain of Responsibility** - Error Handling
+- `ErrorHandler` chain for step failure handling
+- `RetryErrorHandler`, `CompensationErrorHandler`, `ContinueErrorHandler`
+- Flexible error handling strategy
+
+#### 6. **Command Pattern** - Saga Operations
+- `SagaCommand` interface for saga operations
+- `ExecuteSagaCommand` for saga execution
+- Support for undo operations and command history
+
+#### 7. **Builder Pattern** - Complex Object Creation
+- `SagaBuilder` for creating complex saga configurations
+- Fluent API for building sagas with multiple steps
+- Immutable configuration objects
+
 ### Service Layer
-- **SagaOrchestratorService**: Core orchestration logic
-- **StepExecutorService**: Step execution coordination
+- **SagaOrchestratorService**: Core orchestration logic using Command pattern
+- **SagaExecutionTemplate**: Template method for execution flow
+- **StepExecutorFactory**: Factory for step executors
 - **CompensationService**: Compensation (rollback) logic
-- **HttpStepExecutor**: HTTP call execution
-- **DatabaseStepExecutor**: Database operation execution
-- **BusinessLogicStepExecutor**: Custom logic execution
+- **Error Handlers**: Chain of responsibility for error handling
 
 ### Infrastructure Layer
-- **SagaRepository**: MongoDB persistence
-- **SagaController**: REST API endpoints
+- **SagaRepository**: MongoDB persistence with custom queries
+- **SagaController**: REST API endpoints with global exception handling
+- **GlobalExceptionHandler**: Centralized exception handling
 - **EventPublisher**: Event publishing for monitoring
 
 ## Quick Start

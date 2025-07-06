@@ -157,4 +157,11 @@ public class SagaStep {
             this.durationMs = java.time.Duration.between(startedAt, completedAt).toMillis();
         }
     }
+
+    /**
+     * Increment retry count
+     */
+    public void incrementRetryCount() {
+        this.retryCount++;
+    }
 } 
